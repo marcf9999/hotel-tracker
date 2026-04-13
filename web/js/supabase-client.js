@@ -20,7 +20,8 @@ try {
 } catch (e) {
   console.error('Supabase init error:', e);
 }
-const supabase = db;
+// Overwrite the SDK module on window.supabase with the initialized client
+window.supabase = db;
 
 function showToast(msg, type = 'success') {
   const t = document.createElement('div');
