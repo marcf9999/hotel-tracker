@@ -14,12 +14,24 @@
     <div class="card">
       <form id="add-form">
         <div class="form-group">
-          <label for="property_code">Marriott Property Code</label>
-          <input type="text" id="property_code" placeholder="e.g. CLECE" required maxlength="10" style="text-transform:uppercase;">
+          <label for="source">Booking System</label>
+          <select id="source">
+            <option value="marriott">Marriott</option>
+            <option value="windsurfer">Other (Windsurfer/Direct)</option>
+          </select>
         </div>
         <div class="form-group">
           <label for="hotel_name">Hotel Name</label>
           <input type="text" id="hotel_name" placeholder="e.g. Cleveland Marriott East" required>
+        </div>
+        <div class="form-group" id="code-group">
+          <label for="property_code">Property Code</label>
+          <input type="text" id="property_code" placeholder="e.g. CLECE" maxlength="20" style="text-transform:uppercase;">
+          <small class="card-meta">Marriott: in the URL — marriott.com/hotels/<strong>clece</strong>-name/</small>
+        </div>
+        <div class="form-group" id="url-group" style="display:none;">
+          <label for="booking_url">Booking Page URL</label>
+          <input type="url" id="booking_url" placeholder="https://res.windsurfercrs.com/ibe/index.aspx?propertyID=...">
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -31,9 +43,6 @@
             <input type="date" id="checkout" required>
           </div>
         </div>
-        <p class="card-meta" style="margin-bottom:16px;">
-          The property code is in the Marriott URL — e.g. marriott.com/hotels/<strong>clece</strong>-hotel-name/
-        </p>
         <button type="submit" class="btn btn-primary">Add Hotel</button>
       </form>
     </div>
@@ -42,9 +51,16 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-client.js"></script>
   <script>
+    const sourceSelect = document.getElementById('source');
+    sourceSelect.addEventListener('change', () => {
+      const isMarriott = sourceSelect.value === 'marriott';
+      document.getElementById('code-group').style.display = isMarriott ? 'block' : 'none';
+      document.getElementById('url-group').style.display = isMarriott ? 'none' : 'block';
+    });
+
     document.getElementById('add-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const code = document.getElementById('property_code').value.trim().toUpperCase();
+      const source = sourceSelect.value;
       const name = document.getElementById('hotel_name').value.trim();
       const checkin = document.getElementById('checkin').value;
       const checkout = document.getElementById('checkout').value;
@@ -54,12 +70,26 @@
         return;
       }
 
-      const { data, error } = await supabase.from('hotels').insert({
-        property_code: code,
+      const row = {
         hotel_name: name,
         checkin_date: checkin,
         checkout_date: checkout,
-      }).select().single();
+        source: source,
+      };
+
+      if (source === 'marriott') {
+        row.property_code = document.getElementById('property_code').value.trim().toUpperCase();
+        if (!row.property_code) { showToast('Property code is required', 'error'); return; }
+      } else {
+        const url = document.getElementById('booking_url').value.trim();
+        if (!url) { showToast('Booking URL is required', 'error'); return; }
+        row.booking_url = url;
+        // Generate a code from the URL
+        const propMatch = url.match(/propertyID=(\d+)/i);
+        row.property_code = propMatch ? `WS-${propMatch[1]}` : name.substring(0, 10).toUpperCase().replace(/\s/g, '-');
+      }
+
+      const { data, error } = await supabase.from('hotels').insert(row).select().single();
 
       if (error) {
         showToast('Error: ' + error.message, 'error');

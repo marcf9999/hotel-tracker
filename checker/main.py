@@ -23,6 +23,19 @@ log = logging.getLogger(__name__)
 
 def check_hotel(hotel: dict) -> dict:
     """Check a single hotel and return the result."""
+    source = hotel.get("source", "marriott")
+    log.info(f"Checking {hotel['hotel_name']} ({hotel['property_code']}) "
+             f"for {hotel['checkin_date']} to {hotel['checkout_date']} [source={source}]")
+
+    if source == "windsurfer":
+        from .scraper_windsurfer import scrape_and_analyze
+        return scrape_and_analyze(hotel)
+
+    return check_marriott_hotel(hotel)
+
+
+def check_marriott_hotel(hotel: dict) -> dict:
+    """Check a Marriott hotel."""
     from .scraper import scrape
     from .analyzer import analyze_calendar, analyze_rates
 
@@ -30,7 +43,6 @@ def check_hotel(hotel: dict) -> dict:
     ci = hotel["checkin_date"]
     co = hotel["checkout_date"]
 
-    # Format dates for Marriott URLs: MM/DD/YYYY
     ci_parts = ci.split("-")
     co_parts = co.split("-")
     ci_str = f"{ci_parts[1]}/{ci_parts[2]}/{ci_parts[0]}"
@@ -39,7 +51,7 @@ def check_hotel(hotel: dict) -> dict:
     checkin_date = date.fromisoformat(ci)
     checkout_date = date.fromisoformat(co)
 
-    log.info(f"Checking {hotel['hotel_name']} ({code}) for {ci} to {co}")
+    log.info(f"Marriott check: {hotel['hotel_name']} ({code})")
 
     try:
         html = scrape(code, ci_str, co_str)

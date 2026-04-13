@@ -45,10 +45,19 @@
         return;
       }
 
-      // Build Marriott booking link
-      const ci = hotel.checkin_date.split('-');
-      const co = hotel.checkout_date.split('-');
-      const bookingUrl = `https://www.marriott.com/reservation/rateListMenu.mi?propertyCode=${hotel.property_code}&checkInDate=${ci[1]}/${ci[2]}/${ci[0]}&checkOutDate=${co[1]}/${co[2]}/${co[0]}`;
+      // Build booking link based on source
+      let bookingUrl, bookingLabel;
+      if (hotel.source === 'windsurfer' && hotel.booking_url) {
+        const ci = hotel.checkin_date.split('-');
+        const co = hotel.checkout_date.split('-');
+        bookingUrl = `${hotel.booking_url}&checkin=${ci[1]}/${ci[2]}/${ci[0]}&checkout=${co[1]}/${co[2]}/${co[0]}`;
+        bookingLabel = 'Book Now';
+      } else {
+        const ci = hotel.checkin_date.split('-');
+        const co = hotel.checkout_date.split('-');
+        bookingUrl = `https://www.marriott.com/reservation/rateListMenu.mi?propertyCode=${hotel.property_code}&checkInDate=${ci[1]}/${ci[2]}/${ci[0]}&checkOutDate=${co[1]}/${co[2]}/${co[0]}`;
+        bookingLabel = 'Book on Marriott';
+      }
 
       document.title = `${hotel.hotel_name} — Hotel Tracker`;
       document.getElementById('hotel-detail').innerHTML = `
@@ -62,7 +71,7 @@
             </div>
           </div>
           <div style="display:flex;gap:8px;">
-            <a href="${bookingUrl}" target="_blank" class="btn btn-primary btn-sm">Book on Marriott</a>
+            <a href="${bookingUrl}" target="_blank" class="btn btn-primary btn-sm">${bookingLabel}</a>
             <button class="btn btn-secondary btn-sm" onclick="toggleActive('${hotel.id}', ${!hotel.is_active})">${hotel.is_active ? 'Pause' : 'Resume'}</button>
             <button class="btn btn-danger btn-sm" onclick="deleteHotel('${hotel.id}')">Delete</button>
           </div>
