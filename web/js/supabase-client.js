@@ -3,11 +3,22 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // The UMD build exposes window.supabase with a createClient method
 let db;
-if (window.supabase && window.supabase.createClient) {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else {
-  console.error('Supabase CDN not loaded. window.supabase =', window.supabase);
-  console.error('Available keys:', window.supabase ? Object.keys(window.supabase) : 'undefined');
+try {
+  const mod = window.supabase;
+  if (mod && mod.createClient) {
+    db = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } else if (mod) {
+    // Some CDN versions nest it differently
+    const keys = Object.keys(mod);
+    console.log('supabase module keys:', keys);
+    if (mod.default && mod.default.createClient) {
+      db = mod.default.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+  } else {
+    console.error('window.supabase is undefined — CDN script may not have loaded');
+  }
+} catch (e) {
+  console.error('Supabase init error:', e);
 }
 const supabase = db;
 

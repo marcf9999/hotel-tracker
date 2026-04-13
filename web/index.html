@@ -119,7 +119,12 @@
       }
     }
 
-    loadHotels();
+    // Wait for DOM and scripts to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadHotels);
+    } else {
+      loadHotels();
+    }
   </script>
 </body>
 </html>
