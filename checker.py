@@ -246,6 +246,7 @@ async def check_with_nodriver() -> dict:
         headless=False,
         browser_executable_path=chrome_path,
         browser_args=browser_args,
+        sandbox=not IS_CI,
     )
     try:
         log.info("Loading calendar page...")
