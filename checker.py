@@ -364,7 +364,8 @@ def check_with_playwright() -> dict:
             if cal_result["conclusive"]:
                 return cal_result
 
-            return {"available": False, "details": "Inconclusive.", "blocked": False}
+            both_blocked = cal_result.get("blocked") and rate_result.get("blocked")
+            return {"available": False, "details": "Both pages blocked by bot detection." if both_blocked else "Inconclusive.", "blocked": both_blocked}
         finally:
             browser.close()
 
