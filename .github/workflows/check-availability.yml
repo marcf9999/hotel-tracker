@@ -19,15 +19,16 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install Chrome and dependencies
         run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
+          pip install nodriver python-dotenv curl_cffi
+          sudo apt-get update
+          sudo apt-get install -y xvfb google-chrome-stable || true
 
       - name: Run availability check
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
-        run: python checker.py
+          USE_NODRIVER: "true"
+        run: xvfb-run --auto-servernum python checker.py

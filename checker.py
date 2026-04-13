@@ -377,11 +377,13 @@ def main():
     log.info(f"Marriott Availability Checker — {'CI' if IS_CI else 'Local'} mode")
     log.info(f"Property: {PROPERTY_CODE} | Dates: {TARGET_CHECKIN} to {TARGET_CHECKOUT}")
 
+    use_nodriver = os.getenv("USE_NODRIVER") == "true" or not IS_CI
+
     try:
-        if IS_CI:
-            result = check_with_curl() or check_with_playwright()
-        else:
+        if use_nodriver:
             result = check_with_curl() or asyncio.run(check_with_nodriver())
+        else:
+            result = check_with_curl() or check_with_playwright()
     except Exception as e:
         log.error(f"Check failed with exception: {e}")
         result = {"available": False, "details": f"Exception: {e}", "blocked": True}
