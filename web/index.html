@@ -27,16 +27,22 @@
     async function loadHotels() {
       const container = document.getElementById('hotel-list');
 
-      // Get hotels
-      const { data: hotels, error } = await supabase
-        .from('hotels')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        container.innerHTML = `<div class="empty"><p>Error loading hotels: ${error.message}</p></div>`;
+      if (!supabase) {
+        container.innerHTML = '<div class="empty"><p>Database connection failed. Check browser console (F12).</p></div>';
         return;
       }
+
+      try {
+        // Get hotels
+        const { data: hotels, error } = await supabase
+          .from('hotels')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          container.innerHTML = `<div class="empty"><p>Error loading hotels: ${error.message}</p></div>`;
+          return;
+        }
 
       if (!hotels.length) {
         container.innerHTML = `<div class="empty"><p>No hotels being tracked yet.</p><a href="add.html" class="btn btn-primary">Add Your First Hotel</a></div>`;
@@ -107,6 +113,10 @@
           </div>
         `;
       }).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="empty"><p>Error: ${err.message}</p></div>`;
+        console.error(err);
+      }
     }
 
     loadHotels();

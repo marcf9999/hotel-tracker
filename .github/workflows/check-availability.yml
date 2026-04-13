@@ -1,4 +1,4 @@
-name: Check Marriott Availability
+name: Hotel Tracker — Check Availability
 
 on:
   schedule:

@@ -38,15 +38,20 @@ def send_email(subject: str, body: str, to_addr: str | None = None) -> bool:
 
 def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
     """Send an immediate alert when rooms become available."""
-    from .scraper import build_booking_url
-
-    checkin = hotel["checkin_date"].replace("-", "/").lstrip("0")
-    # Reformat to MM/DD/YYYY for Marriott URL
-    parts = hotel["checkin_date"].split("-")
-    ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
-    parts2 = hotel["checkout_date"].split("-")
-    co = f"{parts2[1]}/{parts2[2]}/{parts2[0]}"
-    booking_url = build_booking_url(hotel["property_code"], ci, co)
+    # Build booking URL based on source
+    if hotel.get("source") == "windsurfer" and hotel.get("booking_url"):
+        parts = hotel["checkin_date"].split("-")
+        parts2 = hotel["checkout_date"].split("-")
+        ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
+        co = f"{parts2[1]}/{parts2[2]}/{parts2[0]}"
+        booking_url = f"{hotel['booking_url']}&checkin={ci}&checkout={co}"
+    else:
+        from .scraper import build_booking_url
+        parts = hotel["checkin_date"].split("-")
+        parts2 = hotel["checkout_date"].split("-")
+        ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
+        co = f"{parts2[1]}/{parts2[2]}/{parts2[0]}"
+        booking_url = build_booking_url(hotel["property_code"], ci, co)
 
     # Build per-night table
     night_rows = ""
@@ -66,7 +71,8 @@ def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
         <th style="padding:6px 12px;">Status</th><th style="padding:6px 12px;">Price</th></tr>
         {night_rows}
     </table>
-    <p><a href="{booking_url}" style="font-size:18px;font-weight:bold;color:#2563eb;">Book on Marriott.com</a></p>
+    <p><a href="{booking_url}" style="font-size:18px;font-weight:bold;color:#2563eb;">Book Now</a></p>
+    <p style="color:#666;font-size:12px;">Hotel Tracker</p>
     """
     return send_email(
         f"{hotel['hotel_name']} — Rooms Available {hotel['checkin_date']}!",
@@ -76,9 +82,10 @@ def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
 
 def send_blocked_alert(hotel: dict, details: str):
     body = f"""
-    <h2>Hotel Checker — Blocked</h2>
+    <h2>Hotel Tracker — Blocked</h2>
     <p><strong>{hotel['hotel_name']}</strong> ({hotel['property_code']}) was blocked by bot detection.</p>
     <p>{details}</p>
     <p>The checker will keep trying every 2 hours.</p>
+    <p style="color:#666;font-size:12px;">Hotel Tracker</p>
     """
-    return send_email(f"Hotel Checker Blocked — {hotel['hotel_name']}", body)
+    return send_email(f"Hotel Tracker — Blocked: {hotel['hotel_name']}", body)
