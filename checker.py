@@ -182,7 +182,7 @@ def analyze_calendar(content: str) -> dict:
     content_lower = content.lower()
 
     if "access denied" in content_lower or len(content) < 3000:
-        return {"available": False, "details": "Page blocked or empty.", "conclusive": False, "blocked": "access denied" in content_lower}
+        return {"available": False, "details": "Calendar page blocked by bot detection.", "conclusive": False, "blocked": True}
 
     has_may_2027 = "may 2027" in content_lower or "2027-05" in content or "2027/05" in content
     log.info(f"Calendar analysis: may_2027_visible={has_may_2027}, page_size={len(content)}")
@@ -209,7 +209,7 @@ def analyze_rates(content: str) -> dict:
     content_lower = content.lower()
 
     if "access denied" in content_lower or len(content) < 3000:
-        return {"available": False, "details": "Rate page blocked or empty.", "conclusive": False, "blocked": "access denied" in content_lower}
+        return {"available": False, "details": "Rate page blocked by bot detection.", "conclusive": False, "blocked": True}
 
     positive = ["select room", "view rates", "book now", "add to cart", "room type"]
     negative = ["no availability", "sold out", "no rooms available", "dates are not available"]
@@ -271,12 +271,54 @@ async def check_with_nodriver() -> dict:
         if cal_result["conclusive"]:
             return cal_result
 
-        return {"available": False, "details": "Inconclusive.", "blocked": False}
+        # If both pages were blocked, report it
+        both_blocked = cal_result.get("blocked") and rate_result.get("blocked")
+        return {"available": False, "details": "Both pages blocked by bot detection." if both_blocked else "Inconclusive.", "blocked": both_blocked}
     finally:
         try:
             browser.stop()
         except Exception:
             pass
+
+
+def check_with_curl() -> dict | None:
+    """Fast check using curl_cffi with Chrome TLS fingerprint. Returns None if blocked."""
+    try:
+        from curl_cffi import requests as cffi_requests
+    except ImportError:
+        log.info("curl_cffi not available, skipping")
+        return None
+
+    log.info("Trying curl_cffi (fast path)...")
+    session = cffi_requests.Session(impersonate="chrome131")
+
+    try:
+        # Warm up session
+        session.get("https://www.marriott.com", timeout=15)
+
+        # Check calendar
+        resp = session.get(CALENDAR_URL, timeout=15)
+        content = resp.text
+        log.info(f"curl calendar: HTTP {resp.status_code}, {len(content)} bytes")
+
+        cal_result = analyze_calendar(content)
+        if cal_result["conclusive"]:
+            return cal_result
+
+        # Check rates
+        resp = session.get(RATE_URL, timeout=15)
+        content = resp.text
+        log.info(f"curl rates: HTTP {resp.status_code}, {len(content)} bytes")
+
+        rate_result = analyze_rates(content)
+        if rate_result["conclusive"]:
+            return rate_result
+
+    except Exception as e:
+        log.info(f"curl_cffi failed: {e}")
+
+    log.info("curl_cffi inconclusive, falling back to Playwright")
+    return None
 
 
 def check_with_playwright() -> dict:
@@ -336,9 +378,9 @@ def main():
 
     try:
         if IS_CI:
-            result = check_with_playwright()
+            result = check_with_curl() or check_with_playwright()
         else:
-            result = asyncio.run(check_with_nodriver())
+            result = check_with_curl() or asyncio.run(check_with_nodriver())
     except Exception as e:
         log.error(f"Check failed with exception: {e}")
         result = {"available": False, "details": f"Exception: {e}", "blocked": True}
