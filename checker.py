@@ -235,9 +235,17 @@ async def check_with_nodriver() -> dict:
     """Local check using undetected Chrome."""
     import nodriver as uc
 
+    chrome_path = os.getenv("CHROME_PATH")
+    browser_args = ["--window-size=1920,1080"]
+    if IS_CI:
+        browser_args.append("--no-sandbox")
+    else:
+        browser_args.append("--window-position=-2000,-2000")
+
     browser = await uc.start(
         headless=False,
-        browser_args=["--window-size=1920,1080", "--window-position=-2000,-2000"],
+        browser_executable_path=chrome_path,
+        browser_args=browser_args,
     )
     try:
         log.info("Loading calendar page...")
@@ -385,8 +393,9 @@ def main():
         else:
             result = check_with_curl() or check_with_playwright()
     except Exception as e:
-        log.error(f"Check failed with exception: {e}")
-        result = {"available": False, "details": f"Exception: {e}", "blocked": True}
+        import traceback
+        log.error(f"Check failed with exception: {e}\n{traceback.format_exc()}")
+        result = {"available": False, "details": f"Exception: {type(e).__name__}: {e}", "blocked": True}
 
     was_blocked = result.get("blocked", False)
 
