@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Hotel Tracker</h1>
+      <nav>
+        <a href="add.html">+ Add Hotel</a>
+        <a href="settings.html">Settings</a>
+      </nav>
+    </header>
+
+    <div id="hotel-list">
+      <div class="loading">Loading hotels...</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script>
+    async function loadHotels() {
+      const container = document.getElementById('hotel-list');
+
+      // Get hotels
+      const { data: hotels, error } = await supabase
+        .from('hotels')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        container.innerHTML = `<div class="empty"><p>Error loading hotels: ${error.message}</p></div>`;
+        return;
+      }
+
+      if (!hotels.length) {
+        container.innerHTML = `<div class="empty"><p>No hotels being tracked yet.</p><a href="add.html" class="btn btn-primary">Add Your First Hotel</a></div>`;
+        return;
+      }
+
+      // Get latest check run for each hotel
+      const hotelIds = hotels.map(h => h.id);
+      const { data: runs } = await supabase
+        .from('check_runs')
+        .select('*')
+        .in('hotel_id', hotelIds)
+        .order('checked_at', { ascending: false });
+
+      // Get latest night availability for each hotel
+      const { data: nights } = await supabase
+        .from('night_availability')
+        .select('*')
+        .in('hotel_id', hotelIds)
+        .order('night_date', { ascending: true });
+
+      // Group by hotel
+      const latestRun = {};
+      const latestNights = {};
+      for (const r of (runs || [])) {
+        if (!latestRun[r.hotel_id]) latestRun[r.hotel_id] = r;
+      }
+
+      // For nights, get only from the latest check_run per hotel
+      for (const h of hotels) {
+        const run = latestRun[h.id];
+        if (run) {
+          latestNights[h.id] = (nights || []).filter(n => n.check_run_id === run.id);
+        }
+      }
+
+      container.innerHTML = hotels.map(h => {
+        const run = latestRun[h.id];
+        const hotelNights = latestNights[h.id] || [];
+        const availCount = hotelNights.filter(n => n.is_available).length;
+        const totalNights = hotelNights.length;
+
+        let nightSummary = '';
+        if (totalNights > 0) {
+          const pricedNights = hotelNights.filter(n => n.price_cents);
+          if (pricedNights.length) {
+            const lowest = Math.min(...pricedNights.map(n => n.price_cents));
+            nightSummary = `<span>${availCount}/${totalNights} nights available — from $${(lowest/100).toFixed(0)}/night</span>`;
+          } else {
+            nightSummary = `<span>${availCount}/${totalNights} nights available</span>`;
+          }
+        }
+
+        return `
+          <div class="card">
+            <a href="hotel.html?id=${h.id}">
+              <div class="card-header">
+                <h2>${h.hotel_name || h.property_code}</h2>
+                ${run ? statusBadge(run.status) : '<span class="badge badge-no-data">No checks yet</span>'}
+              </div>
+              <div class="card-meta">
+                <span>${h.property_code}</span>
+                <span>${formatDate(h.checkin_date)} — ${formatDate(h.checkout_date)}</span>
+                ${nightSummary}
+              </div>
+              ${run ? `<div class="card-meta" style="margin-top:6px;"><span>Last checked: ${formatDateTime(run.checked_at)}</span></div>` : ''}
+            </a>
+          </div>
+        `;
+      }).join('');
+    }
+
+    loadHotels();
+  </script>
+</body>
+</html>

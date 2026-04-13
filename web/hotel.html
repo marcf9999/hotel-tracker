@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel Details — Hotel Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back">&larr; Back to Hotels</a>
+
+    <div id="hotel-detail">
+      <div class="loading">Loading...</div>
+    </div>
+
+    <h3 style="margin: 32px 0 16px;">Night Availability</h3>
+    <div id="night-grid" class="night-grid">
+      <div class="loading">Loading...</div>
+    </div>
+
+    <h3 style="margin: 32px 0 16px;">Check History</h3>
+    <div id="check-history">
+      <div class="loading">Loading...</div>
+    </div>
+    <div id="pagination" class="pagination"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script>
+    const hotelId = new URLSearchParams(location.search).get('id');
+    const PAGE_SIZE = 20;
+    let currentPage = 0;
+
+    async function loadHotel() {
+      const { data: hotel, error } = await supabase
+        .from('hotels')
+        .select('*')
+        .eq('id', hotelId)
+        .single();
+
+      if (error || !hotel) {
+        document.getElementById('hotel-detail').innerHTML = '<div class="empty"><p>Hotel not found.</p></div>';
+        return;
+      }
+
+      // Build Marriott booking link
+      const ci = hotel.checkin_date.split('-');
+      const co = hotel.checkout_date.split('-');
+      const bookingUrl = `https://www.marriott.com/reservation/rateListMenu.mi?propertyCode=${hotel.property_code}&checkInDate=${ci[1]}/${ci[2]}/${ci[0]}&checkOutDate=${co[1]}/${co[2]}/${co[0]}`;
+
+      document.title = `${hotel.hotel_name} — Hotel Tracker`;
+      document.getElementById('hotel-detail').innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+          <div>
+            <h1 style="font-size:1.5rem;margin-bottom:4px;">${hotel.hotel_name}</h1>
+            <div class="card-meta">
+              <span>${hotel.property_code}</span>
+              <span>${formatDate(hotel.checkin_date)} — ${formatDate(hotel.checkout_date)}</span>
+              <span>${hotel.is_active ? 'Active' : 'Paused'}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <a href="${bookingUrl}" target="_blank" class="btn btn-primary btn-sm">Book on Marriott</a>
+            <button class="btn btn-secondary btn-sm" onclick="toggleActive('${hotel.id}', ${!hotel.is_active})">${hotel.is_active ? 'Pause' : 'Resume'}</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteHotel('${hotel.id}')">Delete</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadNights() {
+      // Get the most recent check run
+      const { data: runs } = await supabase
+        .from('check_runs')
+        .select('id')
+        .eq('hotel_id', hotelId)
+        .order('checked_at', { ascending: false })
+        .limit(1);
+
+      if (!runs || !runs.length) {
+        document.getElementById('night-grid').innerHTML = '<div class="empty"><p>No check data yet.</p></div>';
+        return;
+      }
+
+      const { data: nights } = await supabase
+        .from('night_availability')
+        .select('*')
+        .eq('check_run_id', runs[0].id)
+        .order('night_date', { ascending: true });
+
+      if (!nights || !nights.length) {
+        document.getElementById('night-grid').innerHTML = '<div class="empty"><p>No per-night data available yet.</p></div>';
+        return;
+      }
+
+      document.getElementById('night-grid').innerHTML = nights.map(n => {
+        const cls = n.is_available ? 'available' : 'unavailable';
+        const priceHtml = n.price_cents
+          ? `<div class="price">$${(n.price_cents / 100).toFixed(0)}</div>`
+          : `<div class="price no-price">${n.is_available ? 'See site' : '—'}</div>`;
+        const statusLabel = n.is_available ? 'Available' : 'Not available';
+        const d = new Date(n.night_date + 'T00:00:00');
+        const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+        return `
+          <div class="night-cell ${cls}">
+            <div class="date">${dayLabel}</div>
+            ${priceHtml}
+            <div class="status" style="color: ${n.is_available ? 'var(--green)' : 'var(--text-muted)'}">${statusLabel}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadHistory(page = 0) {
+      currentPage = page;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data: runs, error, count } = await supabase
+        .from('check_runs')
+        .select('*', { count: 'exact' })
+        .eq('hotel_id', hotelId)
+        .order('checked_at', { ascending: false })
+        .range(from, to);
+
+      if (!runs || !runs.length) {
+        document.getElementById('check-history').innerHTML = '<div class="empty"><p>No checks recorded yet.</p></div>';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+
+      document.getElementById('check-history').innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Status</th><th>Details</th><th>Cal</th><th>Rates</th><th>Mode</th></tr>
+          </thead>
+          <tbody>
+            ${runs.map(r => `
+              <tr>
+                <td style="white-space:nowrap;">${formatDateTime(r.checked_at)}</td>
+                <td>${statusBadge(r.status)}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(r.details || '').replace(/"/g, '&quot;')}">${r.details || '—'}</td>
+                <td>${r.calendar_bytes ? (r.calendar_bytes / 1024).toFixed(0) + 'K' : '—'}</td>
+                <td>${r.rates_bytes ? (r.rates_bytes / 1024).toFixed(0) + 'K' : '—'}</td>
+                <td>${r.checker_mode || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Pagination
+      const totalPages = Math.ceil((count || 0) / PAGE_SIZE);
+      if (totalPages > 1) {
+        let btns = '';
+        btns += `<button ${page === 0 ? 'disabled' : ''} onclick="loadHistory(${page - 1})">&laquo; Prev</button>`;
+        for (let i = 0; i < totalPages && i < 10; i++) {
+          btns += `<button class="${i === page ? 'active' : ''}" onclick="loadHistory(${i})">${i + 1}</button>`;
+        }
+        btns += `<button ${page >= totalPages - 1 ? 'disabled' : ''} onclick="loadHistory(${page + 1})">Next &raquo;</button>`;
+        document.getElementById('pagination').innerHTML = btns;
+      } else {
+        document.getElementById('pagination').innerHTML = '';
+      }
+    }
+
+    async function toggleActive(id, active) {
+      await supabase.from('hotels').update({ is_active: active, updated_at: new Date().toISOString() }).eq('id', id);
+      showToast(active ? 'Tracking resumed' : 'Tracking paused');
+      loadHotel();
+    }
+
+    async function deleteHotel(id) {
+      if (!confirm('Delete this hotel and all its check history?')) return;
+      await supabase.from('hotels').delete().eq('id', id);
+      location.href = 'index.html';
+    }
+
+    loadHotel();
+    loadNights();
+    loadHistory();
+  </script>
+</body>
+</html>

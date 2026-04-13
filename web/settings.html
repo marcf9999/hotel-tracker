@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Hotel Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back">&larr; Back to Hotels</a>
+    <h1 style="margin-bottom:24px;">Settings</h1>
+
+    <div class="card">
+      <h2 style="margin-bottom:16px;">Email Notifications</h2>
+      <form id="settings-form">
+        <div class="form-group">
+          <label for="notify_email">Notification Email</label>
+          <input type="email" id="notify_email" placeholder="you@example.com">
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <strong>Daily Digest</strong>
+            <div class="card-meta">Receive a daily summary of all tracked hotels</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="daily_digest_enabled">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="form-group" id="digest-hour-group" style="display:none;">
+          <label for="daily_digest_hour">Digest Time (UTC)</label>
+          <select id="daily_digest_hour">
+            ${Array.from({length:24}, (_,i) => `<option value="${i}">${i}:00 UTC</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:16px;">
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+          <button type="button" class="btn btn-secondary" id="test-email-btn">Send Test Email</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2 style="margin-bottom:8px;">How It Works</h2>
+      <div class="card-meta">
+        <p style="margin-bottom:8px;">The checker runs every 2 hours via GitHub Actions. It visits each hotel's Marriott calendar page with an undetected Chrome browser, parses per-night availability and pricing, and stores results in the database.</p>
+        <p>You'll receive an immediate email when any tracked hotel's dates open up. If bot detection blocks the checker, you'll get a notification about that too (max once per day).</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script>
+    // Populate hour dropdown
+    const hourSelect = document.getElementById('daily_digest_hour');
+    hourSelect.innerHTML = '';
+    for (let i = 0; i < 24; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${i.toString().padStart(2, '0')}:00 UTC`;
+      hourSelect.appendChild(opt);
+    }
+
+    const digestToggle = document.getElementById('daily_digest_enabled');
+    const digestHourGroup = document.getElementById('digest-hour-group');
+    digestToggle.addEventListener('change', () => {
+      digestHourGroup.style.display = digestToggle.checked ? 'block' : 'none';
+    });
+
+    async function loadSettings() {
+      const { data } = await supabase.from('email_settings').select('*').eq('id', 1).single();
+      if (data) {
+        document.getElementById('notify_email').value = data.notify_email || '';
+        digestToggle.checked = data.daily_digest_enabled || false;
+        hourSelect.value = data.daily_digest_hour || 9;
+        digestHourGroup.style.display = digestToggle.checked ? 'block' : 'none';
+      }
+    }
+
+    document.getElementById('settings-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { error } = await supabase.from('email_settings').upsert({
+        id: 1,
+        notify_email: document.getElementById('notify_email').value.trim(),
+        daily_digest_enabled: digestToggle.checked,
+        daily_digest_hour: parseInt(hourSelect.value),
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        showToast('Error: ' + error.message, 'error');
+      } else {
+        showToast('Settings saved!');
+      }
+    });
+
+    document.getElementById('test-email-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('test-email-btn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const { data, error } = await supabase.functions.invoke('send-test-email');
+        if (error) throw error;
+        showToast('Test email sent! Check your inbox.');
+      } catch (err) {
+        showToast('Failed to send: ' + (err.message || err), 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Test Email';
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>

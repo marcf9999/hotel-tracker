@@ -1,6 +1,7 @@
 .env
-*.html
-*.png
 *.log
 state/
 __pycache__/
+last_*.html
+last_*.png
+debug_*.png

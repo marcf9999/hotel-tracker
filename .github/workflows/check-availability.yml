@@ -2,9 +2,8 @@ name: Check Marriott Availability
 
 on:
   schedule:
-    # Every 2 hours
     - cron: '0 */2 * * *'
-  workflow_dispatch: # Allow manual runs
+  workflow_dispatch:
 
 jobs:
   check:
@@ -21,19 +20,38 @@ jobs:
 
       - name: Install Chrome and dependencies
         run: |
-          pip install nodriver python-dotenv curl_cffi
+          pip install -r requirements.txt
           sudo apt-get update
           sudo apt-get install -y xvfb
-          # Install latest Google Chrome
           wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
-          google-chrome --version
 
       - name: Run availability check
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           USE_NODRIVER: "true"
           CHROME_PATH: "/usr/bin/google-chrome"
-        run: xvfb-run --auto-servernum python checker.py
+        run: xvfb-run --auto-servernum python -m checker.main
+
+  deploy-pages:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: []
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deploy
+        uses: actions/deploy-pages@v4

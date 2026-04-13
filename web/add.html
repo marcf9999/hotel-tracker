@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Hotel — Hotel Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back">&larr; Back to Hotels</a>
+    <h1 style="margin-bottom:24px;">Add Hotel</h1>
+
+    <div class="card">
+      <form id="add-form">
+        <div class="form-group">
+          <label for="property_code">Marriott Property Code</label>
+          <input type="text" id="property_code" placeholder="e.g. CLECE" required maxlength="10" style="text-transform:uppercase;">
+        </div>
+        <div class="form-group">
+          <label for="hotel_name">Hotel Name</label>
+          <input type="text" id="hotel_name" placeholder="e.g. Cleveland Marriott East" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="checkin">Check-in Date</label>
+            <input type="date" id="checkin" required>
+          </div>
+          <div class="form-group">
+            <label for="checkout">Check-out Date</label>
+            <input type="date" id="checkout" required>
+          </div>
+        </div>
+        <p class="card-meta" style="margin-bottom:16px;">
+          The property code is in the Marriott URL — e.g. marriott.com/hotels/<strong>clece</strong>-hotel-name/
+        </p>
+        <button type="submit" class="btn btn-primary">Add Hotel</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script>
+    document.getElementById('add-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('property_code').value.trim().toUpperCase();
+      const name = document.getElementById('hotel_name').value.trim();
+      const checkin = document.getElementById('checkin').value;
+      const checkout = document.getElementById('checkout').value;
+
+      if (new Date(checkout) <= new Date(checkin)) {
+        showToast('Check-out must be after check-in', 'error');
+        return;
+      }
+
+      const { data, error } = await supabase.from('hotels').insert({
+        property_code: code,
+        hotel_name: name,
+        checkin_date: checkin,
+        checkout_date: checkout,
+      }).select().single();
+
+      if (error) {
+        showToast('Error: ' + error.message, 'error');
+        return;
+      }
+
+      showToast('Hotel added!');
+      setTimeout(() => location.href = 'index.html', 500);
+    });
+  </script>
+</body>
+</html>
