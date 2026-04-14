@@ -1,12 +1,16 @@
 name: Hotel Tracker — Check Availability
 
 on:
+  push:
+    branches: [main]
+    paths: [web/**]
   schedule:
     - cron: '0 */2 * * *'
   workflow_dispatch:
 
 jobs:
   check:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
