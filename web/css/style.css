@@ -216,6 +216,29 @@ td { padding: 8px 12px; border-bottom: 1px solid var(--surface2); }
 .toast-error { background: var(--red); color: #fff; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+/* Card delete button */
+.btn-delete-card {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s;
+}
+.card:hover .btn-delete-card { opacity: 1; }
+.btn-delete-card:hover { background: var(--red); color: #fff; border-color: var(--red); }
+
 /* Empty state */
 .empty { text-align: center; padding: 48px 16px; color: var(--text-muted); }
 .empty p { margin-bottom: 16px; }

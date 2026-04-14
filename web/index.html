@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hotel Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -97,7 +98,7 @@
         }
 
         return `
-          <div class="card">
+          <div class="card" style="position:relative;">
             <a href="hotel.html?id=${h.id}">
               <div class="card-header">
                 <h2>${h.hotel_name || h.property_code}</h2>
@@ -110,6 +111,7 @@
               </div>
               ${run ? `<div class="card-meta" style="margin-top:6px;"><span>Last checked: ${formatDateTime(run.checked_at)}</span></div>` : ''}
             </a>
+            <button class="btn-delete-card" onclick="deleteHotel(event, '${h.id}', '${(h.hotel_name || h.property_code).replace(/'/g, "\\'")}')" title="Delete">&times;</button>
           </div>
         `;
       }).join('');
@@ -117,6 +119,17 @@
         container.innerHTML = `<div class="empty"><p>Error: ${err.message}</p></div>`;
         console.error(err);
       }
+    }
+
+    async function deleteHotel(e, id, name) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm('Delete "' + name + '" and all its check history?')) return;
+      await supabase.from('night_availability').delete().eq('hotel_id', id);
+      await supabase.from('check_runs').delete().eq('hotel_id', id);
+      await supabase.from('hotels').delete().eq('id', id);
+      showToast('Hotel deleted');
+      loadHotels();
     }
 
     // Wait for DOM and scripts to be ready
