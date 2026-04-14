@@ -47,7 +47,10 @@
 
       // Build booking link based on source
       let bookingUrl, bookingLabel;
-      if (hotel.source === 'windsurfer' && hotel.booking_url) {
+      if (hotel.source === 'airbnb' && hotel.booking_url) {
+        bookingUrl = `${hotel.booking_url}?check_in=${hotel.checkin_date}&checkout=${hotel.checkout_date}&guests=1`;
+        bookingLabel = 'View on Airbnb';
+      } else if (hotel.source === 'windsurfer' && hotel.booking_url) {
         const ci = hotel.checkin_date.split('-');
         const co = hotel.checkout_date.split('-');
         bookingUrl = `${hotel.booking_url}&checkin=${ci[1]}/${ci[2]}/${ci[0]}&checkout=${co[1]}/${co[2]}/${co[0]}`;

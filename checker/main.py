@@ -31,6 +31,10 @@ def check_hotel(hotel: dict) -> dict:
         from .scraper_windsurfer import scrape_and_analyze
         return scrape_and_analyze(hotel)
 
+    if source == "airbnb":
+        from .scraper_airbnb import scrape_and_analyze as scrape_airbnb
+        return scrape_airbnb(hotel)
+
     return check_marriott_hotel(hotel)
 
 

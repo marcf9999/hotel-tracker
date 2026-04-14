@@ -18,6 +18,7 @@
           <select id="source">
             <option value="marriott">Marriott</option>
             <option value="windsurfer">Other (Windsurfer/Direct)</option>
+            <option value="airbnb">Airbnb</option>
           </select>
         </div>
         <div class="form-group">
@@ -53,9 +54,15 @@
   <script>
     const sourceSelect = document.getElementById('source');
     sourceSelect.addEventListener('change', () => {
-      const isMarriott = sourceSelect.value === 'marriott';
-      document.getElementById('code-group').style.display = isMarriott ? 'block' : 'none';
-      document.getElementById('url-group').style.display = isMarriott ? 'none' : 'block';
+      const val = sourceSelect.value;
+      document.getElementById('code-group').style.display = val === 'marriott' ? 'block' : 'none';
+      document.getElementById('url-group').style.display = val === 'marriott' ? 'none' : 'block';
+      var urlInput = document.getElementById('booking_url');
+      if (val === 'airbnb') {
+        urlInput.placeholder = 'https://www.airbnb.com/rooms/...';
+      } else {
+        urlInput.placeholder = 'https://res.windsurfercrs.com/ibe/index.aspx?propertyID=...';
+      }
     });
 
     document.getElementById('add-form').addEventListener('submit', async (e) => {
@@ -85,8 +92,13 @@
         if (!url) { showToast('Booking URL is required', 'error'); return; }
         row.booking_url = url;
         // Generate a code from the URL
-        const propMatch = url.match(/propertyID=(\d+)/i);
-        row.property_code = propMatch ? `WS-${propMatch[1]}` : name.substring(0, 10).toUpperCase().replace(/\s/g, '-');
+        if (source === 'airbnb') {
+          const roomMatch = url.match(/\/rooms\/(\d+)/);
+          row.property_code = roomMatch ? `ABB-${roomMatch[1].substring(0, 10)}` : name.substring(0, 10).toUpperCase().replace(/\s/g, '-');
+        } else {
+          const propMatch = url.match(/propertyID=(\d+)/i);
+          row.property_code = propMatch ? `WS-${propMatch[1]}` : name.substring(0, 10).toUpperCase().replace(/\s/g, '-');
+        }
       }
 
       const { data, error } = await supabase.from('hotels').insert(row).select().single();

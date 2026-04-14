@@ -39,7 +39,12 @@ def send_email(subject: str, body: str, to_addr: str | None = None) -> bool:
 def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
     """Send an immediate alert when rooms become available."""
     # Build booking URL based on source
-    if hotel.get("source") == "windsurfer" and hotel.get("booking_url"):
+    if hotel.get("source") == "airbnb" and hotel.get("booking_url"):
+        booking_url = (
+            f"{hotel['booking_url']}"
+            f"?check_in={hotel['checkin_date']}&checkout={hotel['checkout_date']}&guests=1"
+        )
+    elif hotel.get("source") == "windsurfer" and hotel.get("booking_url"):
         parts = hotel["checkin_date"].split("-")
         parts2 = hotel["checkout_date"].split("-")
         ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
