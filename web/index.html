@@ -102,6 +102,7 @@
             <a href="hotel.html?id=${h.id}">
               <div class="card-header">
                 <h2>${h.hotel_name || h.property_code}</h2>
+                ${bookingWindowBadge(h)}
                 ${run ? statusBadge(run.status) : '<span class="badge badge-no-data">No checks yet</span>'}
               </div>
               <div class="card-meta">

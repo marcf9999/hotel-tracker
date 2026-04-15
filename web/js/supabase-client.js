@@ -41,3 +41,48 @@ function statusBadge(status) {
               status === 'error' ? 'Error' : status;
   return '<span class="badge badge-' + status + '">' + label + '</span>';
 }
+
+// Booking window: max days in advance each source allows
+var BOOKING_WINDOWS = {
+  marriott: 354,
+  windsurfer: 365,
+  airbnb: 365
+};
+
+function getBookingWindowInfo(hotel) {
+  var maxDays = BOOKING_WINDOWS[hotel.source] || 365;
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var checkin = new Date(hotel.checkin_date + 'T00:00:00');
+  var daysUntilCheckin = Math.ceil((checkin - today) / 86400000);
+
+  // The date when this checkin opens for booking
+  var opensOn = new Date(checkin);
+  opensOn.setDate(opensOn.getDate() - maxDays);
+
+  var isBookable = daysUntilCheckin <= maxDays;
+  var daysUntilOpen = Math.ceil((opensOn - today) / 86400000);
+
+  return {
+    isBookable: isBookable,
+    opensOn: opensOn,
+    daysUntilOpen: isBookable ? 0 : daysUntilOpen,
+    maxDays: maxDays
+  };
+}
+
+function bookingWindowBadge(hotel) {
+  var info = getBookingWindowInfo(hotel);
+  if (info.isBookable) return '';
+  var opensStr = info.opensOn.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return '<span class="badge badge-window">Opens ' + opensStr + '</span>';
+}
+
+function bookingWindowDetail(hotel) {
+  var info = getBookingWindowInfo(hotel);
+  if (info.isBookable) {
+    return '<span style="color:var(--green);">Within booking window (' + info.maxDays + '-day limit)</span>';
+  }
+  var opensStr = info.opensOn.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return '<span style="color:var(--yellow);">Opens for booking ' + opensStr + ' (' + info.daysUntilOpen + ' days away)</span>';
+}

@@ -73,6 +73,9 @@
               <span>${formatDate(hotel.checkin_date)} — ${formatDate(hotel.checkout_date)}</span>
               <span>${hotel.is_active ? 'Active' : 'Paused'}</span>
             </div>
+            <div class="card-meta" style="margin-top:6px;">
+              ${bookingWindowDetail(hotel)}
+            </div>
           </div>
           <div style="display:flex;gap:8px;">
             <a href="${bookingUrl}" target="_blank" class="btn btn-primary btn-sm">${bookingLabel}</a>

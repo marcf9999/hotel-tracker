@@ -84,6 +84,7 @@ header nav a:hover { background: var(--accent); color: #fff; }
 .badge-blocked { background: var(--orange); color: #000; }
 .badge-error { background: var(--red); color: #fff; }
 .badge-no-data { background: var(--surface2); color: var(--text-muted); }
+.badge-window { background: var(--yellow); color: #000; }
 
 /* Night grid */
 .night-grid {
