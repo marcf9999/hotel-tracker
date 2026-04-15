@@ -141,13 +141,15 @@ def _try_google_fallback(hotel: dict, original_details: str) -> dict:
 
 def main():
     from . import db
-    from .notifier import send_availability_alert, send_blocked_alert
+    from .notifier import send_summary_email
 
     log.info("=" * 60)
     log.info("Hotel Availability Checker — Starting run")
 
     hotels = db.get_active_hotels()
     log.info(f"Found {len(hotels)} active hotel(s) to check")
+
+    all_results = []
 
     for hotel in hotels:
         result = check_hotel(hotel)
@@ -175,15 +177,17 @@ def main():
             })
         db.insert_night_availability(night_rows)
 
-        # Notifications
-        if result["status"] == "available":
-            log.info(f"AVAILABLE: {hotel['hotel_name']} — {result['details']}")
-            send_availability_alert(hotel, result["details"], result["nights"])
-        elif result["status"] == "blocked":
-            log.warning(f"BLOCKED: {hotel['hotel_name']} — {result['details']}")
-            send_blocked_alert(hotel, result["details"])
-        else:
-            log.info(f"{result['status'].upper()}: {hotel['hotel_name']} — {result['details']}")
+        log.info(f"{result['status'].upper()}: {hotel['hotel_name']} — {result['details']}")
+
+        all_results.append({
+            "hotel": hotel,
+            "status": result["status"],
+            "details": result["details"],
+        })
+
+    # Send one consolidated summary email
+    if all_results:
+        send_summary_email(all_results)
 
     log.info("Run complete")
     log.info("=" * 60)

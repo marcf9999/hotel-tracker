@@ -36,11 +36,10 @@ def send_email(subject: str, body: str, to_addr: str | None = None) -> bool:
         return False
 
 
-def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
-    """Send an immediate alert when rooms become available."""
-    # Build booking URL based on source
+def _build_booking_url(hotel: dict) -> str:
+    """Build a booking URL for any hotel source."""
     if hotel.get("source") == "airbnb" and hotel.get("booking_url"):
-        booking_url = (
+        return (
             f"{hotel['booking_url']}"
             f"?check_in={hotel['checkin_date']}&check_out={hotel['checkout_date']}&adults=1"
         )
@@ -49,48 +48,89 @@ def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
         parts2 = hotel["checkout_date"].split("-")
         ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
         co = f"{parts2[1]}/{parts2[2]}/{parts2[0]}"
-        booking_url = f"{hotel['booking_url']}&checkin={ci}&checkout={co}"
+        return f"{hotel['booking_url']}&checkin={ci}&checkout={co}"
     else:
         from .scraper import build_booking_url
         parts = hotel["checkin_date"].split("-")
         parts2 = hotel["checkout_date"].split("-")
         ci = f"{parts[1]}/{parts[2]}/{parts[0]}"
         co = f"{parts2[1]}/{parts2[2]}/{parts2[0]}"
-        booking_url = build_booking_url(hotel["property_code"], ci, co)
+        return build_booking_url(hotel["property_code"], ci, co)
 
-    # Build per-night table
-    night_rows = ""
-    for n in nights:
-        status = "Available" if n["is_available"] else "Not available"
-        price = f"${n['price_cents']/100:.0f}" if n.get("price_cents") else "—"
-        color = "#22c55e" if n["is_available"] else "#94a3b8"
-        night_rows += f'<tr><td>{n["night_date"]}</td><td style="color:{color};font-weight:bold">{status}</td><td>{price}</td></tr>'
+
+def _status_color(status: str) -> str:
+    if status == "available":
+        return "#22c55e"
+    elif status == "blocked":
+        return "#f97316"
+    elif status == "error":
+        return "#ef4444"
+    return "#94a3b8"
+
+
+def _status_label(status: str) -> str:
+    if status == "available":
+        return "AVAILABLE"
+    elif status == "not_available":
+        return "Not Yet"
+    elif status == "blocked":
+        return "Blocked"
+    elif status == "error":
+        return "Error"
+    return status
+
+
+def send_summary_email(results: list[dict]):
+    """
+    Send a single summary email with one line per hotel.
+    results is a list of dicts: { hotel, status, details }
+    """
+    if not results:
+        return False
+
+    any_available = any(r["status"] == "available" for r in results)
+    any_blocked = any(r["status"] == "blocked" for r in results)
+
+    # Subject line
+    if any_available:
+        avail_names = [r["hotel"]["hotel_name"] for r in results if r["status"] == "available"]
+        subject = f"Hotel Tracker — Available: {', '.join(avail_names)}"
+    elif any_blocked:
+        subject = "Hotel Tracker — Some checks blocked"
+    else:
+        subject = "Hotel Tracker — All hotels checked"
+
+    # Build one-line-per-hotel table
+    rows = ""
+    for r in results:
+        hotel = r["hotel"]
+        status = r["status"]
+        details = r["details"]
+        color = _status_color(status)
+        label = _status_label(status)
+        dates = f"{hotel['checkin_date']} to {hotel['checkout_date']}"
+        booking_url = _build_booking_url(hotel)
+
+        rows += (
+            f'<tr>'
+            f'<td style="padding:6px 12px;"><a href="{booking_url}" style="color:#2563eb;text-decoration:none;">{hotel["hotel_name"]}</a></td>'
+            f'<td style="padding:6px 12px;white-space:nowrap;">{dates}</td>'
+            f'<td style="padding:6px 12px;color:{color};font-weight:bold;">{label}</td>'
+            f'<td style="padding:6px 12px;color:#666;">{details}</td>'
+            f'</tr>'
+        )
 
     body = f"""
-    <h2>Hotel Availability Alert</h2>
-    <p><strong>{hotel['hotel_name']}</strong> ({hotel['property_code']})<br>
-    <strong>{hotel['checkin_date']} to {hotel['checkout_date']}</strong></p>
-    <p>{details}</p>
-    <table style="border-collapse:collapse;margin:16px 0;">
-        <tr style="background:#f1f5f9;"><th style="padding:6px 12px;text-align:left;">Night</th>
-        <th style="padding:6px 12px;">Status</th><th style="padding:6px 12px;">Price</th></tr>
-        {night_rows}
+    <h2>Hotel Tracker — Check Summary</h2>
+    <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
+        <tr style="background:#f1f5f9;">
+            <th style="padding:6px 12px;text-align:left;">Hotel</th>
+            <th style="padding:6px 12px;text-align:left;">Dates</th>
+            <th style="padding:6px 12px;text-align:left;">Status</th>
+            <th style="padding:6px 12px;text-align:left;">Details</th>
+        </tr>
+        {rows}
     </table>
-    <p><a href="{booking_url}" style="font-size:18px;font-weight:bold;color:#2563eb;">Book Now</a></p>
-    <p style="color:#666;font-size:12px;">Hotel Tracker</p>
+    <p style="color:#666;font-size:12px;">Hotel Tracker — checked {len(results)} hotel(s)</p>
     """
-    return send_email(
-        f"{hotel['hotel_name']} — Rooms Available {hotel['checkin_date']}!",
-        body,
-    )
-
-
-def send_blocked_alert(hotel: dict, details: str):
-    body = f"""
-    <h2>Hotel Tracker — Blocked</h2>
-    <p><strong>{hotel['hotel_name']}</strong> ({hotel['property_code']}) was blocked by bot detection.</p>
-    <p>{details}</p>
-    <p>The checker will keep trying every 2 hours.</p>
-    <p style="color:#666;font-size:12px;">Hotel Tracker</p>
-    """
-    return send_email(f"Hotel Tracker — Blocked: {hotel['hotel_name']}", body)
+    return send_email(subject, body)

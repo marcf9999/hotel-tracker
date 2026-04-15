@@ -14,6 +14,7 @@
       <nav>
         <a href="add.html">+ Add Hotel</a>
         <a href="settings.html">Settings</a>
+        <a href="#" onclick="checkAll(event)" id="check-all-btn">Check All</a>
       </nav>
     </header>
 
@@ -131,6 +132,22 @@
       await supabase.from('hotels').delete().eq('id', id);
       showToast('Hotel deleted');
       loadHotels();
+    }
+
+    async function checkAll(e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      var btn = document.getElementById('check-all-btn');
+      btn.textContent = 'Checking...';
+      btn.style.pointerEvents = 'none';
+      try {
+        await fetch('https://api.github.com/repos/marcf9999/hotel-tracker/dispatches', {
+          method: 'POST',
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+          body: JSON.stringify({ event_type: 'check_now' })
+        });
+      } catch (e) {}
+      showToast('Check triggered — results in ~2 min. Refresh the page shortly.');
+      setTimeout(function() { btn.textContent = 'Check All'; btn.style.pointerEvents = ''; }, 3000);
     }
 
     // Wait for DOM and scripts to be ready

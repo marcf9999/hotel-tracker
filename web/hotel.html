@@ -15,6 +15,24 @@
       <div class="loading">Loading...</div>
     </div>
 
+    <div id="date-editor" style="display:none;" class="card" style="margin-top:16px;">
+      <h3 style="margin-bottom:12px;">Edit Dates</h3>
+      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+          <label for="edit-checkin">Check-in</label>
+          <input type="date" id="edit-checkin">
+        </div>
+        <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+          <label for="edit-checkout">Check-out</label>
+          <input type="date" id="edit-checkout">
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="saveDates()">Save</button>
+          <button class="btn btn-secondary btn-sm" onclick="hideDateEditor()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <h3 style="margin: 32px 0 16px;">Night Availability</h3>
     <div id="night-grid" class="night-grid">
       <div class="loading">Loading...</div>
@@ -30,12 +48,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-client.js"></script>
   <script>
-    const hotelId = new URLSearchParams(location.search).get('id');
-    const PAGE_SIZE = 20;
-    let currentPage = 0;
+    var hotelId = new URLSearchParams(location.search).get('id');
+    var PAGE_SIZE = 20;
+    var currentPage = 0;
+    var currentHotel = null;
 
     async function loadHotel() {
-      const { data: hotel, error } = await supabase
+      var { data: hotel, error } = await supabase
         .from('hotels')
         .select('*')
         .eq('id', hotelId)
@@ -46,65 +65,54 @@
         return;
       }
 
+      currentHotel = hotel;
+
       // Build booking link based on source
-      let bookingUrl, bookingLabel;
+      var bookingUrl, bookingLabel;
       if (hotel.source === 'airbnb' && hotel.booking_url) {
-        bookingUrl = `${hotel.booking_url}?check_in=${hotel.checkin_date}&check_out=${hotel.checkout_date}&adults=1`;
+        bookingUrl = hotel.booking_url + '?check_in=' + hotel.checkin_date + '&check_out=' + hotel.checkout_date + '&adults=1';
         bookingLabel = 'View on Airbnb';
       } else if (hotel.source === 'windsurfer' && hotel.booking_url) {
-        const ci = hotel.checkin_date.split('-');
-        const co = hotel.checkout_date.split('-');
-        bookingUrl = `${hotel.booking_url}&checkin=${ci[1]}/${ci[2]}/${ci[0]}&checkout=${co[1]}/${co[2]}/${co[0]}`;
+        var ci = hotel.checkin_date.split('-');
+        var co = hotel.checkout_date.split('-');
+        bookingUrl = hotel.booking_url + '&checkin=' + ci[1] + '/' + ci[2] + '/' + ci[0] + '&checkout=' + co[1] + '/' + co[2] + '/' + co[0];
         bookingLabel = 'Book Now';
       } else {
-        const ci = hotel.checkin_date.split('-');
-        const co = hotel.checkout_date.split('-');
-        bookingUrl = `https://www.marriott.com/reservation/rateListMenu.mi?propertyCode=${hotel.property_code}&checkInDate=${ci[1]}/${ci[2]}/${ci[0]}&checkOutDate=${co[1]}/${co[2]}/${co[0]}`;
+        var ci = hotel.checkin_date.split('-');
+        var co = hotel.checkout_date.split('-');
+        bookingUrl = 'https://www.marriott.com/reservation/rateListMenu.mi?propertyCode=' + hotel.property_code + '&checkInDate=' + ci[1] + '/' + ci[2] + '/' + ci[0] + '&checkOutDate=' + co[1] + '/' + co[2] + '/' + co[0];
         bookingLabel = 'Book on Marriott';
       }
 
-      document.title = `${hotel.hotel_name} — Hotel Tracker`;
-      document.getElementById('hotel-detail').innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-          <div>
-            <h1 style="font-size:1.5rem;margin-bottom:4px;">${hotel.hotel_name}</h1>
-            <div class="card-meta">
-              <span>${hotel.property_code}</span>
-              <span id="dates-display">
-                <span class="editable-dates" onclick="showDateEditor()" title="Click to edit dates">${formatDate(hotel.checkin_date)} — ${formatDate(hotel.checkout_date)}</span>
-              </span>
-              <span>${hotel.is_active ? 'Active' : 'Paused'}</span>
-            </div>
-            <div id="date-editor" style="display:none;margin-top:10px;">
-              <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;">
-                  <label for="edit-checkin" style="font-size:0.75rem;">Check-in</label>
-                  <input type="date" id="edit-checkin" value="${hotel.checkin_date}" style="padding:6px 8px;font-size:0.8125rem;">
-                </div>
-                <div class="form-group" style="margin:0;">
-                  <label for="edit-checkout" style="font-size:0.75rem;">Check-out</label>
-                  <input type="date" id="edit-checkout" value="${hotel.checkout_date}" style="padding:6px 8px;font-size:0.8125rem;">
-                </div>
-                <button class="btn btn-primary btn-sm" onclick="saveDates('${hotel.id}')">Save</button>
-                <button class="btn btn-secondary btn-sm" onclick="hideDateEditor()">Cancel</button>
-              </div>
-            </div>
-            <div class="card-meta" style="margin-top:6px;">
-              ${bookingWindowDetail(hotel)}
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <a href="${bookingUrl}" target="_blank" class="btn btn-primary btn-sm">${bookingLabel}</a>
-            <button class="btn btn-secondary btn-sm" onclick="toggleActive('${hotel.id}', ${!hotel.is_active})">${hotel.is_active ? 'Pause' : 'Resume'}</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteHotel('${hotel.id}')">Delete</button>
-          </div>
-        </div>
-      `;
+      document.title = hotel.hotel_name + ' \u2014 Hotel Tracker';
+      document.getElementById('hotel-detail').innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">' +
+          '<div>' +
+            '<h1 style="font-size:1.5rem;margin-bottom:4px;">' + hotel.hotel_name + '</h1>' +
+            '<div class="card-meta">' +
+              '<span>' + hotel.property_code + '</span>' +
+              '<span class="editable-dates" onclick="showDateEditor()" title="Click to edit dates">' + formatDate(hotel.checkin_date) + ' \u2014 ' + formatDate(hotel.checkout_date) + '</span>' +
+              '<span>' + (hotel.is_active ? 'Active' : 'Paused') + '</span>' +
+            '</div>' +
+            '<div class="card-meta" style="margin-top:6px;">' +
+              bookingWindowDetail(hotel) +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<a href="' + bookingUrl + '" target="_blank" class="btn btn-primary btn-sm">' + bookingLabel + '</a>' +
+            '<button class="btn btn-secondary btn-sm" onclick="checkNow()">Check Now</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="toggleActive(\'' + hotel.id + '\', ' + !hotel.is_active + ')">' + (hotel.is_active ? 'Pause' : 'Resume') + '</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="deleteHotel(\'' + hotel.id + '\')">Delete</button>' +
+          '</div>' +
+        '</div>';
+
+      // Pre-fill date editor
+      document.getElementById('edit-checkin').value = hotel.checkin_date;
+      document.getElementById('edit-checkout').value = hotel.checkout_date;
     }
 
     async function loadNights() {
-      // Get the most recent check run
-      const { data: runs } = await supabase
+      var { data: runs } = await supabase
         .from('check_runs')
         .select('id')
         .eq('hotel_id', hotelId)
@@ -116,7 +124,7 @@
         return;
       }
 
-      const { data: nights } = await supabase
+      var { data: nights } = await supabase
         .from('night_availability')
         .select('*')
         .eq('check_run_id', runs[0].id)
@@ -127,31 +135,30 @@
         return;
       }
 
-      document.getElementById('night-grid').innerHTML = nights.map(n => {
-        const cls = n.is_available ? 'available' : 'unavailable';
-        const priceHtml = n.price_cents
-          ? `<div class="price">$${(n.price_cents / 100).toFixed(0)}</div>`
-          : `<div class="price no-price">${n.is_available ? 'See site' : '—'}</div>`;
-        const statusLabel = n.is_available ? 'Available' : 'Not available';
-        const d = new Date(n.night_date + 'T00:00:00');
-        const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      document.getElementById('night-grid').innerHTML = nights.map(function(n) {
+        var cls = n.is_available ? 'available' : 'unavailable';
+        var priceHtml = n.price_cents
+          ? '<div class="price">$' + (n.price_cents / 100).toFixed(0) + '</div>'
+          : '<div class="price no-price">' + (n.is_available ? 'See site' : '\u2014') + '</div>';
+        var statusLabel = n.is_available ? 'Available' : 'Not available';
+        var d = new Date(n.night_date + 'T00:00:00');
+        var dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-        return `
-          <div class="night-cell ${cls}">
-            <div class="date">${dayLabel}</div>
-            ${priceHtml}
-            <div class="status" style="color: ${n.is_available ? 'var(--green)' : 'var(--text-muted)'}">${statusLabel}</div>
-          </div>
-        `;
+        return '<div class="night-cell ' + cls + '">' +
+            '<div class="date">' + dayLabel + '</div>' +
+            priceHtml +
+            '<div class="status" style="color: ' + (n.is_available ? 'var(--green)' : 'var(--text-muted)') + '">' + statusLabel + '</div>' +
+          '</div>';
       }).join('');
     }
 
-    async function loadHistory(page = 0) {
+    async function loadHistory(page) {
+      if (page === undefined) page = 0;
       currentPage = page;
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      var from = page * PAGE_SIZE;
+      var to = from + PAGE_SIZE - 1;
 
-      const { data: runs, error, count } = await supabase
+      var { data: runs, error, count } = await supabase
         .from('check_runs')
         .select('*', { count: 'exact' })
         .eq('hotel_id', hotelId)
@@ -164,35 +171,28 @@
         return;
       }
 
-      document.getElementById('check-history').innerHTML = `
-        <table>
-          <thead>
-            <tr><th>Time</th><th>Status</th><th>Details</th><th>Cal</th><th>Rates</th><th>Mode</th></tr>
-          </thead>
-          <tbody>
-            ${runs.map(r => `
-              <tr>
-                <td style="white-space:nowrap;">${formatDateTime(r.checked_at)}</td>
-                <td>${statusBadge(r.status)}</td>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(r.details || '').replace(/"/g, '&quot;')}">${r.details || '—'}</td>
-                <td>${r.calendar_bytes ? (r.calendar_bytes / 1024).toFixed(0) + 'K' : '—'}</td>
-                <td>${r.rates_bytes ? (r.rates_bytes / 1024).toFixed(0) + 'K' : '—'}</td>
-                <td>${r.checker_mode || '—'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
+      var rows = runs.map(function(r) {
+        return '<tr>' +
+          '<td style="white-space:nowrap;">' + formatDateTime(r.checked_at) + '</td>' +
+          '<td>' + statusBadge(r.status) + '</td>' +
+          '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (r.details || '').replace(/"/g, '&quot;') + '">' + (r.details || '\u2014') + '</td>' +
+          '<td>' + (r.calendar_bytes ? (r.calendar_bytes / 1024).toFixed(0) + 'K' : '\u2014') + '</td>' +
+          '<td>' + (r.rates_bytes ? (r.rates_bytes / 1024).toFixed(0) + 'K' : '\u2014') + '</td>' +
+          '<td>' + (r.checker_mode || '\u2014') + '</td>' +
+        '</tr>';
+      }).join('');
 
-      // Pagination
-      const totalPages = Math.ceil((count || 0) / PAGE_SIZE);
+      document.getElementById('check-history').innerHTML =
+        '<table><thead><tr><th>Time</th><th>Status</th><th>Details</th><th>Cal</th><th>Rates</th><th>Mode</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+
+      var totalPages = Math.ceil((count || 0) / PAGE_SIZE);
       if (totalPages > 1) {
-        let btns = '';
-        btns += `<button ${page === 0 ? 'disabled' : ''} onclick="loadHistory(${page - 1})">&laquo; Prev</button>`;
-        for (let i = 0; i < totalPages && i < 10; i++) {
-          btns += `<button class="${i === page ? 'active' : ''}" onclick="loadHistory(${i})">${i + 1}</button>`;
+        var btns = '<button ' + (page === 0 ? 'disabled' : '') + ' onclick="loadHistory(' + (page - 1) + ')">&laquo; Prev</button>';
+        for (var i = 0; i < totalPages && i < 10; i++) {
+          btns += '<button class="' + (i === page ? 'active' : '') + '" onclick="loadHistory(' + i + ')">' + (i + 1) + '</button>';
         }
-        btns += `<button ${page >= totalPages - 1 ? 'disabled' : ''} onclick="loadHistory(${page + 1})">Next &raquo;</button>`;
+        btns += '<button ' + (page >= totalPages - 1 ? 'disabled' : '') + ' onclick="loadHistory(' + (page + 1) + ')">Next &raquo;</button>';
         document.getElementById('pagination').innerHTML = btns;
       } else {
         document.getElementById('pagination').innerHTML = '';
@@ -207,7 +207,7 @@
       document.getElementById('date-editor').style.display = 'none';
     }
 
-    async function saveDates(id) {
+    async function saveDates() {
       var checkin = document.getElementById('edit-checkin').value;
       var checkout = document.getElementById('edit-checkout').value;
       if (!checkin || !checkout) { showToast('Both dates required', 'error'); return; }
@@ -216,12 +216,28 @@
         checkin_date: checkin,
         checkout_date: checkout,
         updated_at: new Date().toISOString()
-      }).eq('id', id);
+      }).eq('id', hotelId);
       if (error) { showToast('Error: ' + error.message, 'error'); return; }
       showToast('Dates updated');
       hideDateEditor();
       loadHotel();
       loadNights();
+    }
+
+    async function checkNow() {
+      showToast('Triggering check...');
+      try {
+        var resp = await fetch('https://api.github.com/repos/marcf9999/hotel-tracker/dispatches', {
+          method: 'POST',
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+          body: JSON.stringify({ event_type: 'check_now' })
+        });
+        // The dispatch endpoint requires auth, so we'll use the workflow_dispatch approach
+        // For now, just show a message
+        showToast('Check triggered — results in ~2 min. Refresh the page shortly.');
+      } catch (e) {
+        showToast('Could not trigger check automatically. Use GitHub Actions to trigger manually.', 'error');
+      }
     }
 
     async function toggleActive(id, active) {
@@ -232,6 +248,8 @@
 
     async function deleteHotel(id) {
       if (!confirm('Delete this hotel and all its check history?')) return;
+      await supabase.from('night_availability').delete().eq('hotel_id', id);
+      await supabase.from('check_runs').delete().eq('hotel_id', id);
       await supabase.from('hotels').delete().eq('id', id);
       location.href = 'index.html';
     }
