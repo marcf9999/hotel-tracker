@@ -140,13 +140,19 @@
       btn.textContent = 'Checking...';
       btn.style.pointerEvents = 'none';
       try {
-        await fetch('https://api.github.com/repos/marcf9999/hotel-tracker/dispatches', {
+        var resp = await fetch(SUPABASE_URL + '/functions/v1/trigger-check', {
           method: 'POST',
-          headers: { 'Accept': 'application/vnd.github.v3+json' },
-          body: JSON.stringify({ event_type: 'check_now' })
+          headers: { 'Content-Type': 'application/json' }
         });
-      } catch (e) {}
-      showToast('Check triggered — results in ~2 min. Refresh the page shortly.');
+        var data = await resp.json();
+        if (data.ok) {
+          showToast('Check triggered — results in ~2 min. Refresh the page shortly.');
+        } else {
+          showToast('Trigger failed: ' + (data.error || data.body || 'unknown'), 'error');
+        }
+      } catch (err) {
+        showToast('Could not trigger check: ' + err.message, 'error');
+      }
       setTimeout(function() { btn.textContent = 'Check All'; btn.style.pointerEvents = ''; }, 3000);
     }
 
