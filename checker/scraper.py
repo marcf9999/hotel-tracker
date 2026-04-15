@@ -9,12 +9,9 @@ log = logging.getLogger(__name__)
 IS_CI = os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI") == "true"
 
 
-def build_calendar_url(property_code: str) -> str:
-    return (
-        f"https://www.marriott.com/search/availabilityCalendar.mi"
-        f"?isRateCalendar=true&propertyCode={property_code}"
-        f"&isSearch=true&currency=&showFullPrice=false&costTab=total&isAdultsOnly=false"
-    )
+def build_hotel_url(property_code: str) -> str:
+    """Hotel overview page — used to warm up the session."""
+    return f"https://www.marriott.com/hotels/travel/{property_code.lower()}"
 
 
 def build_rate_url(property_code: str, checkin: str, checkout: str) -> str:
@@ -34,8 +31,12 @@ def build_booking_url(property_code: str, checkin: str, checkout: str) -> str:
     )
 
 
-async def scrape_with_nodriver(calendar_url: str, rate_url: str) -> dict:
-    """Scrape using undetected Chrome via nodriver."""
+async def scrape_with_nodriver(property_code: str, rate_url: str) -> dict:
+    """
+    Scrape using undetected Chrome via nodriver.
+    Strategy: visit hotel overview page first to clear Akamai challenge,
+    then navigate to the rate/availability page.
+    """
     import nodriver as uc
 
     chrome_path = os.getenv("CHROME_PATH")
@@ -53,27 +54,45 @@ async def scrape_with_nodriver(calendar_url: str, rate_url: str) -> dict:
     )
 
     try:
-        # Calendar page
-        log.info("Loading calendar page...")
-        tab = await browser.get(calendar_url)
-        await tab.sleep(10)
+        # Step 1: Visit hotel overview page to establish session and clear Akamai
+        hotel_url = build_hotel_url(property_code)
+        log.info(f"Warming up session: {hotel_url}")
+        tab = await browser.get(hotel_url)
+        await tab.sleep(8)
 
-        cal_html = await tab.get_content()
-        if "akamai" in cal_html.lower() or len(cal_html) < 3000:
-            log.info("Waiting for Akamai challenge...")
-            await tab.sleep(10)
-            cal_html = await tab.get_content()
+        warmup_html = await tab.get_content()
+        warmup_size = len(warmup_html)
+        log.info(f"Warmup page: {warmup_size} bytes")
 
-        log.info(f"Calendar: {len(cal_html)} bytes")
+        # If still on Akamai challenge, wait longer
+        if warmup_size < 5000 or "akamai" in warmup_html.lower():
+            log.info("Akamai challenge detected, waiting for it to clear...")
+            await tab.sleep(12)
+            warmup_html = await tab.get_content()
+            warmup_size = len(warmup_html)
+            log.info(f"After wait: {warmup_size} bytes")
 
-        # Rate page
-        log.info("Loading rate page...")
+        # Step 2: Navigate to rate/availability page
+        log.info(f"Loading rates page: {rate_url}")
         tab = await browser.get(rate_url)
         await tab.sleep(10)
-        rate_html = await tab.get_content()
-        log.info(f"Rates: {len(rate_html)} bytes")
 
-        return {"calendar_html": cal_html, "rate_html": rate_html}
+        rate_html = await tab.get_content()
+        rate_size = len(rate_html)
+        log.info(f"Rates page: {rate_size} bytes")
+
+        # If small, might be challenge — wait more
+        if rate_size < 5000:
+            log.info("Rate page small, waiting...")
+            await tab.sleep(10)
+            rate_html = await tab.get_content()
+            rate_size = len(rate_html)
+            log.info(f"After wait: {rate_size} bytes")
+
+        return {
+            "calendar_html": warmup_html,
+            "rate_html": rate_html,
+        }
 
     finally:
         try:
@@ -82,7 +101,7 @@ async def scrape_with_nodriver(calendar_url: str, rate_url: str) -> dict:
             pass
 
 
-def scrape_with_curl(calendar_url: str, rate_url: str) -> dict | None:
+def scrape_with_curl(property_code: str, rate_url: str) -> dict | None:
     """Fast scrape attempt with curl_cffi. Returns None if blocked."""
     try:
         from curl_cffi import requests as cffi_requests
@@ -93,20 +112,18 @@ def scrape_with_curl(calendar_url: str, rate_url: str) -> dict | None:
     session = cffi_requests.Session(impersonate="chrome131")
 
     try:
-        session.get("https://www.marriott.com", timeout=15)
-
-        cal_resp = session.get(calendar_url, timeout=15)
-        log.info(f"curl calendar: HTTP {cal_resp.status_code}, {len(cal_resp.text)} bytes")
+        # Warm up with hotel overview page
+        hotel_url = build_hotel_url(property_code)
+        session.get(hotel_url, timeout=15)
 
         rate_resp = session.get(rate_url, timeout=15)
         log.info(f"curl rates: HTTP {rate_resp.status_code}, {len(rate_resp.text)} bytes")
 
-        # If both are small, it's an Akamai challenge — inconclusive
-        if len(cal_resp.text) < 3000 and len(rate_resp.text) < 3000:
-            log.info("curl_cffi got challenge pages, falling back")
+        if len(rate_resp.text) < 5000:
+            log.info("curl_cffi got challenge page, falling back")
             return None
 
-        return {"calendar_html": cal_resp.text, "rate_html": rate_resp.text}
+        return {"calendar_html": "", "rate_html": rate_resp.text}
 
     except Exception as e:
         log.info(f"curl_cffi failed: {e}")
@@ -118,14 +135,13 @@ def scrape(property_code: str, checkin_str: str, checkout_str: str) -> dict:
     Scrape Marriott for a property. Tries curl first, falls back to nodriver.
     Returns dict with calendar_html, rate_html.
     """
-    cal_url = build_calendar_url(property_code)
     rate_url = build_rate_url(property_code, checkin_str, checkout_str)
 
-    result = scrape_with_curl(cal_url, rate_url)
+    result = scrape_with_curl(property_code, rate_url)
     if result:
         result["mode"] = "curl_cffi"
         return result
 
-    result = asyncio.run(scrape_with_nodriver(cal_url, rate_url))
+    result = asyncio.run(scrape_with_nodriver(property_code, rate_url))
     result["mode"] = "nodriver"
     return result

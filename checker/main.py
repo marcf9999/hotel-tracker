@@ -35,12 +35,7 @@ def check_hotel(hotel: dict) -> dict:
         from .scraper_airbnb import scrape_and_analyze as scrape_airbnb
         return scrape_airbnb(hotel)
 
-    # Marriott: try Google Hotels first (no bot detection), fall back to direct scrape
-    google_result = check_marriott_via_google(hotel)
-    if google_result:
-        return google_result
-
-    log.info("Google Hotels didn't return data, trying direct Marriott scrape...")
+    # Marriott: scrape directly, fall back to Google Hotels if blocked
     return check_marriott_hotel(hotel)
 
 
@@ -57,9 +52,9 @@ def check_marriott_via_google(hotel: dict) -> dict | None:
 
 
 def check_marriott_hotel(hotel: dict) -> dict:
-    """Check a Marriott hotel."""
+    """Check a Marriott hotel directly, fall back to Google Hotels if blocked."""
     from .scraper import scrape
-    from .analyzer import analyze_calendar, analyze_rates
+    from .analyzer import analyze_rates
 
     code = hotel["property_code"]
     ci = hotel["checkin_date"]
@@ -70,78 +65,77 @@ def check_marriott_hotel(hotel: dict) -> dict:
     ci_str = f"{ci_parts[1]}/{ci_parts[2]}/{ci_parts[0]}"
     co_str = f"{co_parts[1]}/{co_parts[2]}/{co_parts[0]}"
 
-    checkin_date = date.fromisoformat(ci)
-    checkout_date = date.fromisoformat(co)
-
     log.info(f"Marriott check: {hotel['hotel_name']} ({code})")
 
     try:
         html = scrape(code, ci_str, co_str)
     except Exception as e:
         log.error(f"Scrape failed for {code}: {e}")
-        return {
-            "status": "error",
-            "details": f"Scrape error: {e}",
-            "blocked": True,
-            "nights": [],
-            "calendar_bytes": 0,
-            "rates_bytes": 0,
-            "mode": "error",
-        }
+        return _try_google_fallback(hotel, f"Scrape error: {e}")
 
-    cal_result = analyze_calendar(html["calendar_html"], checkin_date, checkout_date)
     rate_result = analyze_rates(html["rate_html"])
-
-    nights = cal_result.get("nights", [])
-
-    if cal_result["conclusive"] and cal_result["available"]:
-        return {
-            "status": "available",
-            "details": cal_result["details"],
-            "blocked": False,
-            "nights": nights,
-            "calendar_bytes": len(html["calendar_html"]),
-            "rates_bytes": len(html["rate_html"]),
-            "mode": html["mode"],
-        }
+    cal_bytes = len(html.get("calendar_html") or "")
+    rate_bytes = len(html["rate_html"])
 
     if rate_result["conclusive"] and rate_result["available"]:
         return {
             "status": "available",
             "details": rate_result["details"],
             "blocked": False,
-            "nights": nights,
-            "calendar_bytes": len(html["calendar_html"]),
-            "rates_bytes": len(html["rate_html"]),
+            "nights": [],
+            "calendar_bytes": cal_bytes,
+            "rates_bytes": rate_bytes,
             "mode": html["mode"],
         }
 
-    # Not available — determine if blocked
-    cal_blocked = cal_result.get("blocked", False)
-    rate_blocked = rate_result.get("blocked", False)
-    both_blocked = cal_blocked and rate_blocked
+    if rate_result["conclusive"] and not rate_result["available"]:
+        return {
+            "status": "not_available",
+            "details": rate_result["details"],
+            "blocked": False,
+            "nights": [],
+            "calendar_bytes": cal_bytes,
+            "rates_bytes": rate_bytes,
+            "mode": html["mode"],
+        }
 
-    if both_blocked:
-        status = "blocked"
-        details = "Both pages blocked by bot detection."
-    elif cal_result["conclusive"]:
-        status = "not_available"
-        details = cal_result["details"]
-    elif rate_result["conclusive"]:
-        status = "not_available"
-        details = rate_result["details"]
-    else:
-        status = "blocked" if (cal_blocked or rate_blocked) else "error"
-        details = cal_result["details"] + " | " + rate_result["details"]
+    # Blocked or inconclusive — try Google Hotels as fallback
+    rate_blocked = rate_result.get("blocked", False)
+    if rate_blocked:
+        log.info("Marriott blocked, trying Google Hotels fallback...")
+        fallback = _try_google_fallback(hotel, rate_result["details"])
+        if fallback:
+            return fallback
 
     return {
-        "status": status,
-        "details": details,
-        "blocked": both_blocked,
-        "nights": nights,
-        "calendar_bytes": len(html["calendar_html"]),
-        "rates_bytes": len(html["rate_html"]),
+        "status": "blocked" if rate_blocked else "error",
+        "details": rate_result["details"],
+        "blocked": rate_blocked,
+        "nights": [],
+        "calendar_bytes": cal_bytes,
+        "rates_bytes": rate_bytes,
         "mode": html["mode"],
+    }
+
+
+def _try_google_fallback(hotel: dict, original_details: str) -> dict:
+    """Try Google Hotels as a fallback when direct Marriott scraping fails."""
+    try:
+        google_result = check_marriott_via_google(hotel)
+        if google_result:
+            google_result["details"] = google_result["details"] + " (Google Hotels fallback)"
+            return google_result
+    except Exception as e:
+        log.error(f"Google Hotels fallback failed: {e}")
+
+    return {
+        "status": "blocked",
+        "details": original_details,
+        "blocked": True,
+        "nights": [],
+        "calendar_bytes": 0,
+        "rates_bytes": 0,
+        "mode": "error",
     }
 
 
