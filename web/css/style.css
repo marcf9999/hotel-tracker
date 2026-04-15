@@ -217,6 +217,14 @@ td { padding: 8px 12px; border-bottom: 1px solid var(--surface2); }
 .toast-error { background: var(--red); color: #fff; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+/* Editable dates */
+.editable-dates {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--text-muted);
+  transition: color 0.15s;
+}
+.editable-dates:hover { color: var(--accent); border-color: var(--accent); }
+
 /* Card delete button */
 .btn-delete-card {
   position: absolute;

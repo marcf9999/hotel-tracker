@@ -70,8 +70,24 @@
             <h1 style="font-size:1.5rem;margin-bottom:4px;">${hotel.hotel_name}</h1>
             <div class="card-meta">
               <span>${hotel.property_code}</span>
-              <span>${formatDate(hotel.checkin_date)} — ${formatDate(hotel.checkout_date)}</span>
+              <span id="dates-display">
+                <span class="editable-dates" onclick="showDateEditor()" title="Click to edit dates">${formatDate(hotel.checkin_date)} — ${formatDate(hotel.checkout_date)}</span>
+              </span>
               <span>${hotel.is_active ? 'Active' : 'Paused'}</span>
+            </div>
+            <div id="date-editor" style="display:none;margin-top:10px;">
+              <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="margin:0;">
+                  <label for="edit-checkin" style="font-size:0.75rem;">Check-in</label>
+                  <input type="date" id="edit-checkin" value="${hotel.checkin_date}" style="padding:6px 8px;font-size:0.8125rem;">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label for="edit-checkout" style="font-size:0.75rem;">Check-out</label>
+                  <input type="date" id="edit-checkout" value="${hotel.checkout_date}" style="padding:6px 8px;font-size:0.8125rem;">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="saveDates('${hotel.id}')">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="hideDateEditor()">Cancel</button>
+              </div>
             </div>
             <div class="card-meta" style="margin-top:6px;">
               ${bookingWindowDetail(hotel)}
@@ -181,6 +197,31 @@
       } else {
         document.getElementById('pagination').innerHTML = '';
       }
+    }
+
+    function showDateEditor() {
+      document.getElementById('date-editor').style.display = 'block';
+    }
+
+    function hideDateEditor() {
+      document.getElementById('date-editor').style.display = 'none';
+    }
+
+    async function saveDates(id) {
+      var checkin = document.getElementById('edit-checkin').value;
+      var checkout = document.getElementById('edit-checkout').value;
+      if (!checkin || !checkout) { showToast('Both dates required', 'error'); return; }
+      if (new Date(checkout) <= new Date(checkin)) { showToast('Check-out must be after check-in', 'error'); return; }
+      var { error } = await supabase.from('hotels').update({
+        checkin_date: checkin,
+        checkout_date: checkout,
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+      if (error) { showToast('Error: ' + error.message, 'error'); return; }
+      showToast('Dates updated');
+      hideDateEditor();
+      loadHotel();
+      loadNights();
     }
 
     async function toggleActive(id, active) {
