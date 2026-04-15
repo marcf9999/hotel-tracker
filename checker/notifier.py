@@ -42,7 +42,7 @@ def send_availability_alert(hotel: dict, details: str, nights: list[dict]):
     if hotel.get("source") == "airbnb" and hotel.get("booking_url"):
         booking_url = (
             f"{hotel['booking_url']}"
-            f"?check_in={hotel['checkin_date']}&checkout={hotel['checkout_date']}&guests=1"
+            f"?check_in={hotel['checkin_date']}&check_out={hotel['checkout_date']}&adults=1"
         )
     elif hotel.get("source") == "windsurfer" and hotel.get("booking_url"):
         parts = hotel["checkin_date"].split("-")

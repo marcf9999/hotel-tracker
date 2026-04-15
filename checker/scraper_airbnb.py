@@ -1,4 +1,4 @@
-"""Scraper for Airbnb listings via the public calendar API."""
+"""Scraper for Airbnb listings via listing page HTML parsing."""
 
 import json
 import logging
@@ -6,12 +6,6 @@ import re
 from datetime import date, timedelta
 
 log = logging.getLogger(__name__)
-
-# Public API key embedded in Airbnb's frontend JS
-AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
-
-# Persisted query hash for PdpAvailabilityCalendar operation
-CALENDAR_QUERY_HASH = "8f08e03c7bd16fcad3c92a3592c19a8b559a0d0e065e7f2571b69df2e7da3b77"
 
 
 def extract_listing_id(url: str) -> str:
@@ -22,149 +16,151 @@ def extract_listing_id(url: str) -> str:
     raise ValueError(f"Cannot extract listing ID from: {url}")
 
 
-def fetch_calendar(listing_id: str, checkin: date, checkout: date) -> tuple[dict | None, int]:
-    """Fetch availability calendar from Airbnb API. Returns (data, raw_bytes)."""
-    try:
-        from curl_cffi import requests as cffi_requests
-    except ImportError:
-        log.error("curl_cffi not available")
-        return None, 0
+def fetch_listing_page(listing_id: str, checkin: date, checkout: date) -> tuple[str, int]:
+    """Fetch the Airbnb listing page with dates. Returns (html, byte_count)."""
+    from curl_cffi import requests as cffi_requests
 
-    # Calculate how many months to fetch
-    month_span = (checkout.year - checkin.year) * 12 + (checkout.month - checkin.month) + 1
-
-    variables = json.dumps({
-        "request": {
-            "count": month_span,
-            "listingId": listing_id,
-            "month": checkin.month,
-            "year": checkin.year,
-        }
-    })
-
-    extensions = json.dumps({
-        "persistedQuery": {
-            "version": 1,
-            "sha256Hash": CALENDAR_QUERY_HASH,
-        }
-    })
-
-    url = "https://www.airbnb.com/api/v3/PdpAvailabilityCalendar"
-    params = {
-        "operationName": "PdpAvailabilityCalendar",
-        "locale": "en",
-        "currency": "USD",
-        "variables": variables,
-        "extensions": extensions,
-    }
-
-    headers = {
-        "X-Airbnb-Api-Key": AIRBNB_API_KEY,
-        "Content-Type": "application/json",
-    }
+    url = (
+        f"https://www.airbnb.com/rooms/{listing_id}"
+        f"?check_in={checkin.isoformat()}&check_out={checkout.isoformat()}&adults=1"
+    )
 
     session = cffi_requests.Session(impersonate="chrome131")
 
     try:
-        resp = session.get(url, params=params, headers=headers, timeout=15)
+        resp = session.get(url, timeout=20)
         raw_bytes = len(resp.text)
-        log.info(f"Airbnb calendar API: HTTP {resp.status_code}, {raw_bytes} bytes")
+        log.info(f"Airbnb listing page: HTTP {resp.status_code}, {raw_bytes} bytes")
 
         if resp.status_code != 200:
-            log.error(f"Airbnb API error: HTTP {resp.status_code}")
-            return None, raw_bytes
+            log.error(f"Airbnb page error: HTTP {resp.status_code}")
+            return "", raw_bytes
 
-        data = resp.json()
-        return data, raw_bytes
+        return resp.text, raw_bytes
     except Exception as e:
-        log.error(f"Airbnb calendar fetch failed: {e}")
-        return None, 0
+        log.error(f"Airbnb page fetch failed: {e}")
+        return "", 0
 
 
-def analyze_calendar(data: dict, checkin: date, checkout: date) -> dict:
-    """Parse Airbnb calendar API response into nights list."""
-    # Build set of target night dates (checkin to checkout-1)
+def analyze_listing_page(html: str, checkin: date, checkout: date) -> dict:
+    """
+    Analyze Airbnb listing page HTML for availability signals.
+
+    Key signals in the SSR data:
+    - structuredDisplayPrice not null → available with pricing
+    - localizedUnavailabilityMessage not null → not available
+    - integratedPill with cancellation policy → available
+    - selectedDatesLink with date title → dates recognized
+    """
+    if len(html) < 5000:
+        return {
+            "available": False,
+            "details": "Page too small — may be blocked or failed to load.",
+            "nights": [],
+            "has_data": False,
+        }
+
     num_nights = (checkout - checkin).days
-    target_dates = set()
-    for i in range(num_nights):
-        target_dates.add((checkin + timedelta(days=i)).isoformat())
 
-    nights = []
-    found_dates = set()
-
-    # Navigate the response structure
-    try:
-        calendar_months = (
-            data.get("data", {})
-            .get("merlin", {})
-            .get("pdpAvailabilityCalendar", {})
-            .get("calendarMonths", [])
-        )
-    except (AttributeError, TypeError):
-        calendar_months = []
-
-    for month in calendar_months:
-        for day in month.get("days", []):
-            cal_date = day.get("calendarDate")
-            if cal_date not in target_dates:
-                continue
-
-            found_dates.add(cal_date)
-            is_available = day.get("available", False)
-
-            price_cents = None
-            price_obj = day.get("price", {})
-            if price_obj:
-                # Try to get the total price amount
-                amount = price_obj.get("amount")
-                if amount is not None:
-                    price_cents = int(float(amount) * 100)
-                elif price_obj.get("priceFormatted"):
-                    # Parse from formatted string like "$149"
-                    price_match = re.search(r'[\$€£]([\d,]+)', price_obj["priceFormatted"])
-                    if price_match:
-                        price_cents = int(float(price_match.group(1).replace(",", "")) * 100)
-
+    # Check for unavailability message
+    unavail_match = re.search(
+        r'"localizedUnavailabilityMessage"\s*:\s*"([^"]+)"', html
+    )
+    if unavail_match:
+        msg = unavail_match.group(1)
+        log.info(f"Airbnb: unavailable — {msg}")
+        nights = []
+        for i in range(num_nights):
+            d = (checkin + timedelta(days=i)).isoformat()
             nights.append({
-                "night_date": cal_date,
-                "is_available": is_available,
-                "price_cents": price_cents,
+                "night_date": d,
+                "is_available": False,
+                "price_cents": None,
                 "currency": "USD",
             })
+        return {
+            "available": False,
+            "details": f"Not available: {msg}",
+            "nights": nights,
+            "has_data": True,
+        }
 
-    # Any target dates not found in response — mark unavailable
-    for d in sorted(target_dates - found_dates):
+    # Check for pricing data (strongest availability signal)
+    has_price = False
+    price_cents = None
+
+    # Look for structured price
+    price_match = re.search(
+        r'"structuredDisplayPrice"\s*:\s*\{[^}]*"primaryLine"[^}]*"price"\s*:\s*"([^"]+)"',
+        html,
+    )
+    if price_match:
+        has_price = True
+        raw_price = price_match.group(1)
+        cents = _parse_price(raw_price)
+        if cents:
+            price_cents = cents
+
+    # Look for any price display
+    if not has_price:
+        price_display = re.search(r'"priceString"\s*:\s*"\$(\d[\d,]*)"', html)
+        if price_display:
+            has_price = True
+            price_cents = int(float(price_display.group(1).replace(",", "")) * 100)
+
+    # Check for cancellation policy (strong availability signal)
+    has_cancellation = bool(re.search(
+        r'"integratedPill":\s*\{[^}]*"title"\s*:\s*"[^"]*cancellation',
+        html, re.IGNORECASE,
+    ))
+
+    # Check for dates being recognized
+    dates_recognized = bool(re.search(
+        r'"selectedDatesLink":\s*\{[^}]*"title"\s*:\s*"[^"]*\w+ \d+',
+        html,
+    ))
+
+    # Check for canInstantBook
+    can_book = bool(re.search(r'"canInstantBook"\s*:\s*true', html))
+
+    log.info(f"Airbnb signals: price={has_price}, cancellation={has_cancellation}, "
+             f"dates_recognized={dates_recognized}, can_book={can_book}")
+
+    # Build nights
+    nights = []
+    is_available = has_price or has_cancellation or can_book
+    for i in range(num_nights):
+        d = (checkin + timedelta(days=i)).isoformat()
         nights.append({
             "night_date": d,
-            "is_available": False,
-            "price_cents": None,
+            "is_available": is_available,
+            "price_cents": price_cents,
             "currency": "USD",
         })
 
-    # Sort by date
-    nights.sort(key=lambda n: n["night_date"])
-
-    avail_count = sum(1 for n in nights if n["is_available"])
-    total = len(nights)
-    any_available = avail_count > 0
-
-    log.info(f"Airbnb calendar: {avail_count}/{total} nights available")
-
-    if any_available:
-        priced = [n for n in nights if n["price_cents"]]
-        price_info = f" from ${min(n['price_cents'] for n in priced)/100:.0f}/night" if priced else ""
-        details = f"{avail_count}/{total} nights available{price_info}"
-    elif not calendar_months:
-        details = "No calendar data returned — API may have changed."
+    if is_available:
+        price_info = f" — ${price_cents / 100:.0f}/night" if price_cents else ""
+        details = f"Available for {checkin} to {checkout}{price_info}"
+    elif dates_recognized:
+        # Dates recognized but no clear availability signals
+        details = f"Dates recognized but availability unclear for {checkin} to {checkout}"
     else:
-        details = f"All {total} nights unavailable for {checkin} to {checkout}"
+        details = f"Could not determine availability for {checkin} to {checkout}"
 
     return {
-        "available": any_available,
+        "available": is_available,
         "details": details,
         "nights": nights,
-        "has_data": len(calendar_months) > 0,
+        "has_data": dates_recognized or has_price or has_cancellation,
     }
+
+
+def _parse_price(text: str) -> int | None:
+    """Parse a price string like '$149' or '€120' into cents."""
+    match = re.search(r'[\$€£]([\d,]+(?:\.\d{2})?)', text)
+    if match:
+        return int(float(match.group(1).replace(",", "")) * 100)
+    return None
 
 
 def scrape_and_analyze(hotel: dict) -> dict:
@@ -175,12 +171,12 @@ def scrape_and_analyze(hotel: dict) -> dict:
 
     log.info(f"Airbnb check: listing {listing_id} for {checkin} to {checkout}")
 
-    data, raw_bytes = fetch_calendar(listing_id, checkin, checkout)
+    html, raw_bytes = fetch_listing_page(listing_id, checkin, checkout)
 
-    if data is None:
+    if not html:
         return {
             "status": "error",
-            "details": "Failed to fetch Airbnb calendar API",
+            "details": "Failed to fetch Airbnb listing page",
             "blocked": False,
             "nights": [],
             "calendar_bytes": raw_bytes,
@@ -188,7 +184,7 @@ def scrape_and_analyze(hotel: dict) -> dict:
             "mode": "curl_cffi",
         }
 
-    analysis = analyze_calendar(data, checkin, checkout)
+    analysis = analyze_listing_page(html, checkin, checkout)
 
     if analysis["available"]:
         status = "available"

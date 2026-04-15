@@ -41,12 +41,12 @@ async def scrape_with_nodriver(calendar_url: str, rate_url: str) -> dict:
     chrome_path = os.getenv("CHROME_PATH")
     browser_args = ["--window-size=1920,1080"]
     if IS_CI:
-        browser_args.append("--no-sandbox")
+        browser_args.extend(["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"])
     else:
         browser_args.append("--window-position=-2000,-2000")
 
     browser = await uc.start(
-        headless=False,
+        headless=IS_CI,
         browser_executable_path=chrome_path,
         browser_args=browser_args,
         sandbox=not IS_CI,
