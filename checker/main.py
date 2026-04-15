@@ -35,7 +35,25 @@ def check_hotel(hotel: dict) -> dict:
         from .scraper_airbnb import scrape_and_analyze as scrape_airbnb
         return scrape_airbnb(hotel)
 
+    # Marriott: try Google Hotels first (no bot detection), fall back to direct scrape
+    google_result = check_marriott_via_google(hotel)
+    if google_result:
+        return google_result
+
+    log.info("Google Hotels didn't return data, trying direct Marriott scrape...")
     return check_marriott_hotel(hotel)
+
+
+def check_marriott_via_google(hotel: dict) -> dict | None:
+    """Try Google Hotels first — avoids Marriott bot detection."""
+    from .scraper_google import check_google_hotels
+
+    checkin = date.fromisoformat(hotel["checkin_date"])
+    checkout = date.fromisoformat(hotel["checkout_date"])
+
+    log.info(f"Trying Google Hotels for {hotel['hotel_name']}...")
+    result = check_google_hotels(hotel["hotel_name"], checkin, checkout)
+    return result
 
 
 def check_marriott_hotel(hotel: dict) -> dict:

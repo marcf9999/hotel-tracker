@@ -108,10 +108,9 @@ def analyze_listing_page(html: str, checkin: date, checkout: date) -> dict:
             has_price = True
             price_cents = int(float(price_display.group(1).replace(",", "")) * 100)
 
-    # Check for cancellation policy (strong availability signal)
-    has_cancellation = bool(re.search(
-        r'"integratedPill":\s*\{[^}]*"title"\s*:\s*"[^"]*cancellation',
-        html, re.IGNORECASE,
+    # Check for book button (reliable availability signal)
+    has_book_button = bool(re.search(
+        r'"bookItButtonByPlacement"\s*:\s*\{', html
     ))
 
     # Check for dates being recognized
@@ -123,12 +122,12 @@ def analyze_listing_page(html: str, checkin: date, checkout: date) -> dict:
     # Check for canInstantBook
     can_book = bool(re.search(r'"canInstantBook"\s*:\s*true', html))
 
-    log.info(f"Airbnb signals: price={has_price}, cancellation={has_cancellation}, "
+    log.info(f"Airbnb signals: price={has_price}, book_button={has_book_button}, "
              f"dates_recognized={dates_recognized}, can_book={can_book}")
 
-    # Build nights
+    # Only report available when we have strong evidence: actual pricing or book button
     nights = []
-    is_available = has_price or has_cancellation or can_book
+    is_available = has_price or has_book_button or can_book
     for i in range(num_nights):
         d = (checkin + timedelta(days=i)).isoformat()
         nights.append({
